@@ -479,6 +479,12 @@ $(INSTALLED_BUILD_PROP_TARGET): $(intermediate_system_build_prop) $(INSTALLED_RE
 INSTALLED_VENDOR_BUILD_PROP_TARGET := $(TARGET_OUT_VENDOR)/build.prop
 ALL_DEFAULT_INSTALLED_MODULES += $(INSTALLED_VENDOR_BUILD_PROP_TARGET)
 
+ifdef TARGET_VENDOR_PROP
+vendor_prop_files := $(TARGET_VENDOR_PROP)
+else
+vendor_prop_files := $(wildcard $(TARGET_DEVICE_DIR)/vendor.prop)
+endif
+
 ifdef property_overrides_split_enabled
 FINAL_VENDOR_BUILD_PROPERTIES += \
     $(call collapse-pairs, $(PRODUCT_PROPERTY_OVERRIDES))
@@ -486,7 +492,7 @@ FINAL_VENDOR_BUILD_PROPERTIES := $(call uniq-pairs-by-first-component, \
     $(FINAL_VENDOR_BUILD_PROPERTIES),=)
 endif  # property_overrides_split_enabled
 
-$(INSTALLED_VENDOR_BUILD_PROP_TARGET): $(BUILDINFO_COMMON_SH) $(intermediate_system_build_prop)
+$(INSTALLED_VENDOR_BUILD_PROP_TARGET): $(BUILDINFO_COMMON_SH) $(intermediate_system_build_prop) $(vendor_prop_files)
 	@echo Target vendor buildinfo: $@
 	@mkdir -p $(dir $@)
 	$(hide) echo > $@
@@ -519,6 +525,16 @@ endif
 	        echo "#" >> $@;
 	$(hide) cat $(INSTALLED_ANDROID_INFO_TXT_TARGET) | grep 'require version-' | sed -e 's/require version-/ro.build.expect./g' >> $@
 ifdef property_overrides_split_enabled
+	$(hide) $(foreach file,$(vendor_prop_files), \
+	    if [ -f "$(file)" ]; then \
+	        echo Target vendor properties from: "$(file)"; \
+	        echo "" >> $@; \
+	        echo "#" >> $@; \
+	        echo "# from $(file)" >> $@; \
+	        echo "#" >> $@; \
+	        cat $(file) >> $@; \
+	        echo "# end of $(file)" >> $@; \
+	    fi;)
 	$(hide) $(foreach line,$(FINAL_VENDOR_BUILD_PROPERTIES), \
 	    echo "$(line)" >> $@;)
 endif  # property_overrides_split_enabled
@@ -570,12 +586,18 @@ endif  # BOARD_USES_PRODUCTIMAGE
 INSTALLED_ODM_BUILD_PROP_TARGET := $(TARGET_OUT_ODM)/etc/build.prop
 ALL_DEFAULT_INSTALLED_MODULES += $(INSTALLED_ODM_BUILD_PROP_TARGET)
 
+ifdef TARGET_ODM_PROP
+odm_prop_files := $(TARGET_ODM_PROP)
+else
+odm_prop_files := $(wildcard $(TARGET_DEVICE_DIR)/odm.prop)
+endif
+
 FINAL_ODM_BUILD_PROPERTIES += \
     $(call collapse-pairs, $(PRODUCT_ODM_PROPERTIES))
 FINAL_ODM_BUILD_PROPERTIES := $(call uniq-pairs-by-first-component, \
     $(FINAL_ODM_BUILD_PROPERTIES),=)
 
-$(INSTALLED_ODM_BUILD_PROP_TARGET): $(BUILDINFO_COMMON_SH)
+$(INSTALLED_ODM_BUILD_PROP_TARGET): $(BUILDINFO_COMMON_SH) $(odm_prop_files)
 	@echo Target odm buildinfo: $@
 	@mkdir -p $(dir $@)
 	$(hide) echo > $@
@@ -583,6 +605,16 @@ $(INSTALLED_ODM_BUILD_PROP_TARGET): $(BUILDINFO_COMMON_SH)
 	$(hide) echo ro.odm.product.cpu.abilist32="$(TARGET_CPU_ABI_LIST_32_BIT)">>$@
 	$(hide) echo ro.odm.product.cpu.abilist64="$(TARGET_CPU_ABI_LIST_64_BIT)">>$@
 	$(hide) $(call generate-common-build-props,odm,$@)
+	$(hide) $(foreach file,$(odm_prop_files), \
+	    if [ -f "$(file)" ]; then \
+	        echo Target odm properties from: "$(file)"; \
+	        echo "" >> $@; \
+	        echo "#" >> $@; \
+	        echo "# from $(file)" >> $@; \
+	        echo "#" >> $@; \
+	        cat $(file) >> $@; \
+	        echo "# end of $(file)" >> $@; \
+	    fi;)
 	$(hide) echo "#" >> $@; \
 	        echo "# ADDITIONAL ODM BUILD PROPERTIES" >> $@; \
 	        echo "#" >> $@;
@@ -1869,6 +1901,10 @@ $(RECOVERY_INSTALL_OTA_KEYS): $(SOONG_ZIP) $(OTA_PUBLIC_KEYS) $(extra_keys)
 RECOVERYIMAGE_ID_FILE := $(PRODUCT_OUT)/recovery.id
 
 define build-recoveryramdisk
+  @echo ----- Generating Changelog ------
+  $(hide) ./vendor/bootleggers/tools/changelog.sh
+  $(hide) mv $(PRODUCT_OUT)/Changelog.txt $(PRODUCT_OUT)/$(PLATFORM_VERSION)-$(TARGET_PRODUCT).txt
+  @echo -e ----- Making recovery ramdisk ------
   $(hide) mkdir -p $(TARGET_RECOVERY_OUT)
   $(hide) mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/sdcard $(TARGET_RECOVERY_ROOT_OUT)/tmp
   # Copying baseline ramdisk...
@@ -3524,6 +3560,7 @@ endif
 
 ifeq ($(build_otatools_package),true)
 OTATOOLS :=  $(HOST_OUT_EXECUTABLES)/minigzip \
+  $(HOST_OUT_EXECUTABLES)/aapt \
   $(HOST_OUT_EXECUTABLES)/aapt2 \
   $(HOST_OUT_EXECUTABLES)/checkvintf \
   $(HOST_OUT_EXECUTABLES)/mkbootfs \
@@ -4791,6 +4828,7 @@ deps := \
 	$(target_notice_file_txt) \
 	$(tools_notice_file_txt) \
 	$(OUT_DOCS)/offline-sdk-timestamp \
+	$(SDK_METADATA_FILES) \
 	$(SYMBOLS_ZIP) \
 	$(COVERAGE_ZIP) \
 	$(APPCOMPAT_ZIP) \
